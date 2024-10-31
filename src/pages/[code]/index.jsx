@@ -1,49 +1,75 @@
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import type { NextPage } from "next";
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { useState } from "react";
+import { useAccount, useWriteContract } from "wagmi";
+import { config } from "@/src/wagmi";
+import { waitForTransactionReceipt } from "wagmi/actions";
 import {
-  useAccount,
-  useWaitForTransactionReceipt,
-  useWriteContract,
-} from "wagmi";
-import { QrCode, Coins, ArrowRight, Loader2, Wallet } from "lucide-react";
+  QrCode,
+  Coins,
+  ArrowRight,
+  ThumbsUp,
+  Loader2,
+  Wallet,
+} from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import QRCodeABI from "@/src/constants";
+import { useState } from "react";
 
-const Home: NextPage = () => {
+const Home = () => {
   const router = useRouter();
   const { code } = router.query;
-  const [transactionHash, setTransactionHash] = useState<string | null>(null);
-  const { error, isPending, writeContract } = useWriteContract();
+  const [loading, setLoading] = useState(false);
+  const { writeContractAsync, error } = useWriteContract();
   const { isConnected } = useAccount();
   const contractAddress = "0x916C587f835708531621bD4FB42d25a3518370e2";
 
-  const checkAndClaim = async (e: React.FormEvent) => {
+  const [transactionHash, setTransactionHash] = useState("");
+  const [status, setStatus] = useState("");
+
+  const checkAndClaim = async (e) => {
     e.preventDefault();
+    setLoading(true);
     try {
-      const txHash = await writeContract({
-        address: contractAddress,
+      const tx = await writeContractAsync({
         abi: QRCodeABI,
+        address: contractAddress,
         functionName: "claimUSDC",
         args: [code],
       });
 
-      if (typeof txHash !== 'undefined') {
-        setTransactionHash(txHash);
+      const transactionRecipt = await waitForTransactionReceipt(config, {
+        hash: tx,
+      });
+
+      setTransactionHash(transactionRecipt.transactionHash);
+
+      if (transactionRecipt.status === "success") {
+        setStatus("success");
+        setLoading(false);
       } else {
-        setTransactionHash(null);
+        setStatus("failed");
+        setLoading(false);
       }
     } catch (error) {
-      console.error(error);
-      setTransactionHash(null);
+      console.error("Transaction failed to write:", error);
+      setLoading(false);
     }
   };
 
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
-    hash: `0x${transactionHash}` || '',
-  });
+  const getUserErrorMessage = (error) => {
+    if (!error) return null;
+
+    console.log("Error: ", error);
+
+    if (error.message.includes("Invalid Code")) {
+      return "QR Code has already been claimed.";
+    }
+    if (error.message.includes("reverted")) {
+      return "The transaction failed. Ensure you have sufficient funds and try again.";
+    }
+    return "An unexpected error occurred. Please try again later.";
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
@@ -55,7 +81,7 @@ const Home: NextPage = () => {
         />
         <link href="/favicon.ico" rel="icon" />
       </Head>
-      
+
       <nav className="fixed top-0 w-full bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex justify-end">
@@ -69,58 +95,62 @@ const Home: NextPage = () => {
       <main className="pt-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl p-8">
           <div className="flex flex-col items-center text-center space-y-6">
-            {/* Header Section */}
             <div className="space-y-2">
-              <h1 className="text-3xl font-bold text-blue-900">Lagos Onchain Summit</h1>
+              <h1 className="text-3xl font-bold text-blue-900">
+                Lagos Onchain Summit
+              </h1>
               <p className="text-gray-600">Scan, Claim & Win USDC Campaign</p>
             </div>
 
-            {/* QR Code Indicator */}
             <div className="bg-blue-50 p-6 rounded-full">
               <QrCode size={64} className="text-blue-600" />
             </div>
 
-            {/* Code Display */}
             <div className="bg-gray-50 px-4 py-2 rounded-lg">
               <p className="font-mono text-gray-700">Code: {code}</p>
             </div>
 
-            {/* Prize Info */}
             <div className="flex items-center space-x-2 text-green-600">
               <Coins size={24} />
               <span className="text-xl font-semibold">1 USDC</span>
             </div>
 
-            {/* Claim Button */}
             <form onSubmit={checkAndClaim} className="w-full">
               <button
-                disabled={isPending || !isConnected}
+                disabled={loading || !isConnected || status === "success"}
                 type="submit"
                 className={`w-full font-bold py-3 px-6 rounded-lg transition-colors flex items-center justify-center space-x-2 
-                ${!isConnected 
-                  ? 'bg-gray-400 cursor-not-allowed opacity-50' 
-                  : 'bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50'}`}
+    ${
+      !isConnected
+        ? "bg-gray-400 cursor-not-allowed opacity-50"
+        : status === "success"
+        ? "bg-gray-400 cursor-not-allowed opacity-50" 
+        : "bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
+    }`}
               >
-                {isPending ? (
+                {loading ? (
                   <>
-                    <Loader2 className="animate-spin" size={20} />
-                    <span>Processing...</span>
-                  </>
-                ) : !isConnected ? (
-                  <>
-                    <Wallet size={20} />
-                    <span>Connect Wallet to Claim</span>
+                    <Loader2 className="done" size={20} />
+                    <span>claiming...</span>
                   </>
                 ) : (
                   <>
-                    <span>Claim USDC</span>
-                    <ArrowRight size={20} />
+                    {isConnected ? (
+                      <>
+                        <span>Claim USDC</span>
+                        <ArrowRight size={20} />
+                      </>
+                    ) : (
+                      <>
+                        <Wallet size={20} />
+                        <span>Connect Wallet to Claim</span>
+                      </>
+                    )}
                   </>
                 )}
               </button>
             </form>
 
-            {/* Connection Status */}
             {!isConnected && (
               <Alert className="bg-yellow-50 border-yellow-200">
                 <AlertTitle className="flex items-center gap-2">
@@ -133,17 +163,28 @@ const Home: NextPage = () => {
               </Alert>
             )}
 
-            {/* Transaction Status */}
-            {transactionHash && (
-              <div>Transaction Hash: {transactionHash}</div>
-            )}
-            {isConfirming && <div>Waiting for confirmation...</div>}
-            {isConfirmed && <div>Transaction confirmed.</div>}
-            {error && (
-              <div className="text-red-500">Error: {error.message}</div>
+            {status === "success" && (
+              <div className="border border-green-500 bg-green-100 rounded-lg p-4 flex items-center space-x-2 cursor-pointer hover:bg-green-200 transition md:flex-col md:space-x-0 md:space-y-2 md:items-start">
+                <ThumbsUp className="text-green-500" size={24} />
+                <div className="text-sm md:text-base">
+                  <span>Transaction confirmed.</span>
+                  <br />
+                  <a
+                    href={`https://basescan.org/tx/${transactionHash}`}
+                    className="text-blue-600 underline hover:text-blue-800"
+                  >
+                    View your transaction on the blockchain.
+                  </a>
+                </div>
+              </div>
             )}
 
-            {/* Campaign Info */}
+            {error && (
+              <div className="text-red-500">
+                Error: {getUserErrorMessage(error)}
+              </div>
+            )}
+
             <div className="border-t pt-6 mt-6 text-sm text-gray-600">
               <h3 className="font-semibold mb-2">How it works:</h3>
               <ol className="text-left space-y-2">

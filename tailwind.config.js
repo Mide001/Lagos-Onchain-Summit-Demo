@@ -2,11 +2,11 @@
 module.exports = {
     darkMode: ["class"],
 	content: [
-		'./pages/**/*.{ts,tsx}',
-		'./components/**/*.{ts,tsx}',
-		'./app/**/*.{ts,tsx}',
-		'./src/**/*.{ts,tsx}',
-	  ],
+        './pages/**/*.{ts,tsx,jsx}', // Include jsx files
+        './components/**/*.{ts,tsx,jsx}', // Include jsx files
+        './app/**/*.{ts,tsx,jsx}', // Include jsx files
+        './src/**/*.{ts,tsx,jsx}', // Include jsx files
+    ],
   theme: {
   	extend: {
   		borderRadius: {
