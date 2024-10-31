@@ -6,7 +6,6 @@ import ClaimPage from "@/src/components/ClaimPage";
 
 const Home: NextPage = () => {
   const router = useRouter();
-
   const { code } = router.query;
 
   return (
